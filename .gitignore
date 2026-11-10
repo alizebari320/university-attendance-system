@@ -7,3 +7,12 @@ dist/
 coverage/
 playwright-report/
 .vercel
+*.tgz
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
