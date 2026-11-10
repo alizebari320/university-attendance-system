@@ -15,8 +15,22 @@ const courseSchema = z.object({
 export const listCourses = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { departmentId } = req.query;
+    const actorId = (req as any).user.id;
+    const actorRole = (req as any).user.role;
+    const where: any = departmentId ? { departmentId: String(departmentId) } : {};
+
+    if (actorRole === 'DEPARTMENT_ADMIN' || actorRole === 'LECTURER') {
+      const profile = actorRole === 'DEPARTMENT_ADMIN'
+        ? await prisma.departmentAdminProfile.findUnique({ where: { userId: actorId } })
+        : await prisma.lecturerProfile.findUnique({ where: { userId: actorId } });
+      where.departmentId = profile ? profile.departmentId : '__none__';
+    } else if (actorRole === 'STUDENT') {
+      const student = await prisma.studentProfile.findUnique({ where: { userId: actorId } });
+      where.departmentId = student ? student.departmentId : '__none__';
+    }
+
     const courses = await prisma.course.findMany({
-      where: departmentId ? { departmentId: String(departmentId) } : {},
+      where,
       include: { department: { include: { college: true } } },
       orderBy: { createdAt: 'desc' },
     });

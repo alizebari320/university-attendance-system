@@ -18,11 +18,20 @@ const studentSchema = z.object({
 export const listStudents = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { collegeId, departmentId } = req.query;
+    const actorId = (req as any).user.id;
+    const actorRole = (req as any).user.role;
+    const where: any = {
+      ...(collegeId ? { collegeId: String(collegeId) } : {}),
+      ...(departmentId ? { departmentId: String(departmentId) } : {}),
+    };
+
+    if (actorRole === 'DEPARTMENT_ADMIN') {
+      const admin = await prisma.departmentAdminProfile.findUnique({ where: { userId: actorId } });
+      where.departmentId = admin ? admin.departmentId : '__none__';
+    }
+
     const students = await prisma.studentProfile.findMany({
-      where: {
-        ...(collegeId ? { collegeId: String(collegeId) } : {}),
-        ...(departmentId ? { departmentId: String(departmentId) } : {}),
-      },
+      where,
       include: { user: true, college: true, department: true },
       orderBy: { createdAt: 'desc' },
     });

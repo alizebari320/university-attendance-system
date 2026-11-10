@@ -1,0 +1,40 @@
+const { chromium } = require('playwright');
+(async () => {
+  const errors = [];
+  const browser = await chromium.launch({ executablePath: process.env.HOME + '/.cache/ms-playwright/chromium-1254/chrome-linux64/chrome' });
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await ctx.newPage();
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto('http://localhost:5173/login', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(500);
+  await page.fill('input[type="email"]', 'doctor@university.edu');
+  await page.fill('input[type="password"]', 'Doctor123!');
+  await page.click('button[type="submit"]');
+  await page.waitForURL('**/dashboard');
+  await page.waitForTimeout(1800);
+  await page.screenshot({ path: '/tmp/opencode/shots/22-doctor-dashboard-fixed.png', fullPage: true });
+  await page.goto('http://localhost:5173/colleges', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: '/tmp/opencode/shots/23-colleges-fixed.png', fullPage: true });
+  await page.goto('http://localhost:5173/reports/weekly', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: '/tmp/opencode/shots/24-reports-fixed.png', fullPage: true });
+
+  const mctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const mp = await mctx.newPage();
+  await mp.goto('http://localhost:5173/login', { waitUntil: 'domcontentloaded' });
+  await mp.waitForTimeout(400);
+  await mp.fill('input[type="email"]', 'student@university.edu');
+  await mp.fill('input[type="password"]', 'Student123!');
+  await mp.click('button[type="submit"]');
+  await mp.waitForURL('**/dashboard');
+  await mp.waitForTimeout(800);
+  await mp.click('button[aria-label="Toggle navigation"]');
+  await mp.waitForTimeout(500);
+  await mp.screenshot({ path: '/tmp/opencode/shots/25-mobile-menu.png' });
+  const navVisible = await mp.getByRole('link', { name: 'Justifications' }).isVisible();
+  console.log('mobile nav visible after toggle:', navVisible);
+
+  await browser.close();
+  console.log('page errors:', errors.length ? errors : 'none');
+})().catch(e => { console.error('FAILED', e.message); process.exit(1); });

@@ -25,7 +25,7 @@ export const dailyReport = async (req: Request, res: Response, next: NextFunctio
         where: {
           createdAt: { gte: today, lt: endDay },
         },
-        include: { student: { include: { department: true } }, lectureInstance: true },
+        include: { student: { include: { department: true } }, lectureInstance: { include: { slot: { include: { course: true } } } } },
       }),
       prisma.attendanceRecord.groupBy({
         by: ['status'],
@@ -60,7 +60,10 @@ export const weeklyReport = async (req: Request, res: Response, next: NextFuncti
 
     const byDay = await prisma.attendanceRecord.findMany({
       where: { createdAt: { gte: startOfWeek, lt: endOfWeek } },
-      include: { student: { include: { department: true } } },
+      include: {
+        student: { include: { department: true } },
+        lectureInstance: { include: { slot: { include: { course: true } } } },
+      },
     });
 
     res.json({ success: true, data: { weekStart: startOfWeek, weekEnd: endOfWeek, stats, records: byDay } });
@@ -125,9 +128,59 @@ export const semesterReport = async (req: Request, res: Response, next: NextFunc
 
 export const exportReport = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { type = 'daily' } = req.query;
-    res.setHeader('Content-Type', 'text/csv');
+    const type = String(req.query.type || 'daily');
+    const range = parseRange(req.query.range as string | undefined);
+
+    let start: Date;
+    let end: Date;
+    if (range) {
+      start = range.start;
+      end = range.end;
+    } else if (type === 'weekly') {
+      start = new Date();
+      start.setDate(start.getDate() - start.getDay());
+      start.setHours(0, 0, 0, 0);
+      end = new Date(start);
+      end.setDate(end.getDate() + 7);
+    } else if (type === 'monthly') {
+      start = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      end = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1);
+    } else if (type === 'semester') {
+      start = new Date(new Date().getFullYear(), 0, 1);
+      end = new Date(new Date().getFullYear(), 11, 31, 23, 59, 59);
+    } else {
+      start = new Date();
+      start.setHours(0, 0, 0, 0);
+      end = new Date(start);
+      end.setDate(end.getDate() + 1);
+    }
+
+    const records = await prisma.attendanceRecord.findMany({
+      where: { createdAt: { gte: start, lt: end } },
+      include: {
+        student: { include: { user: true, department: true } },
+        lectureInstance: { include: { slot: { include: { course: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const escape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const header = ['Student Number', 'Student Email', 'Department', 'Course', 'Lecture Date', 'Status', 'Check-in Time', 'Method'];
+    const rows = records.map(r => [
+      r.student.studentNumber,
+      r.student.user.email,
+      r.student.department.name,
+      r.lectureInstance.slot.course.name,
+      r.lectureInstance.scheduledDate.toISOString(),
+      r.status,
+      r.checkInTime ? r.checkInTime.toISOString() : '',
+      r.checkInMethod,
+    ].map(escape).join(','));
+
+    const csv = [header.map(escape).join(','), ...rows].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=${type}-report-${Date.now()}.csv`);
-    res.status(200).send('col1,col2\nvalue1,value2');
+    res.status(200).send(csv);
   } catch (error) { next(error); }
 };

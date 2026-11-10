@@ -272,6 +272,23 @@ export const getAttendanceSheet = async (
 ): Promise<void> => {
   try {
     const lectureId = req.params.lectureId;
+    const actorId = (req as any).user.id;
+    const actorRole = (req as any).user.role;
+
+    const lecture = await prisma.lectureInstance.findUnique({
+      where: { id: lectureId },
+      include: { slot: true },
+    });
+    if (!lecture) { res.status(404).json({ success: false, error: 'Lecture not found' }); return; }
+
+    if (actorRole === 'LECTURER') {
+      const lecturer = await prisma.lecturerProfile.findUnique({ where: { userId: actorId } });
+      if (!lecturer || lecture.slot.lecturerId !== lecturer.id) {
+        res.status(403).json({ success: false, error: 'Not assigned to this lecture' });
+        return;
+      }
+    }
+
     const sheet = await prisma.attendanceRecord.findMany({
       where: { lectureInstanceId: lectureId },
       include: { student: { include: { user: true, department: true } } },
@@ -287,10 +304,12 @@ export const getStudentAttendanceHistory = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const studentUserId = req.params.userId || (req as any).user.id;
+    const requested = req.params.userId;
+    const currentUserId = (req as any).user.id;
     const actorRole = (req as any).user.role;
+    const studentUserId = !requested || requested === 'me' ? currentUserId : requested;
 
-    if (actorRole === 'STUDENT' && studentUserId !== (req as any).user.id) {
+    if (actorRole === 'STUDENT' && studentUserId !== currentUserId) {
       res.status(403).json({ success: false, error: 'Can only access your own history' });
       return;
     }
@@ -303,6 +322,14 @@ export const getStudentAttendanceHistory = async (
       },
       orderBy: { createdAt: 'desc' },
     });
-    res.json({ success: true, data: history });
+
+    const summary = {
+      total: history.length,
+      present: history.filter((r) => r.status === 'PRESENT').length,
+      late: history.filter((r) => r.status === 'LATE').length,
+      absent: history.filter((r) => r.status === 'ABSENT').length,
+    };
+
+    res.json({ success: true, data: history, summary });
   } catch (error) { next(error); }
 };

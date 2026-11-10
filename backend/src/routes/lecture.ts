@@ -4,11 +4,13 @@ import { authenticate, authorize } from '../middleware/auth';
 
 const router = Router();
 
-router.use(authenticate, authorize(['SUPER_ADMIN', 'DOCTOR', 'LECTURER', 'DEPARTMENT_ADMIN']));
+// Students need to read the schedule to know which lecture is open for check-in
+router.get('/slots', authenticate, authorize(['SUPER_ADMIN', 'DOCTOR', 'LECTURER', 'DEPARTMENT_ADMIN', 'STUDENT']), ctrl.listLectureSlots);
+router.get('/', authenticate, authorize(['SUPER_ADMIN', 'DOCTOR', 'LECTURER', 'DEPARTMENT_ADMIN', 'STUDENT']), ctrl.listLectures);
 
-router.get('/slots', ctrl.listLectureSlots);
+router.use(authenticate, authorize(['SUPER_ADMIN', 'DOCTOR', 'LECTURER', 'DEPARTMENT_ADMIN']));
 router.post('/slots', ctrl.createLectureSlot);
-router.get('/', ctrl.listLectures);
+router.post('/instances', ctrl.createLectureInstance);
 router.post('/:id/open', ctrl.openLecture);
 router.post('/:id/close', ctrl.closeLecture);
 

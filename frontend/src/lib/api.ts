@@ -10,18 +10,25 @@ export const api = axios.create({
   },
 });
 
-// Response interceptor for token refresh
+// Attempt a silent refresh once per request when the access token has expired.
+// Auth endpoints are excluded: a 401 from /auth/me simply means "not signed in"
+// and must not trigger a refresh/redirect loop on the login screen.
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const url: string = originalRequest?.url || '';
+    const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/refresh') || url.includes('/auth/me');
+
+    if (error.response?.status === 401 && !originalRequest?._retry && !isAuthEndpoint) {
       originalRequest._retry = true;
       try {
         await api.post('/auth/refresh');
         return api(originalRequest);
       } catch (refreshError) {
-        window.location.href = '/login';
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
         return Promise.reject(refreshError);
       }
     }

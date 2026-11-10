@@ -7,7 +7,7 @@ import { z } from 'zod';
 const router = Router();
 
 const submitSchema = z.object({
-  params: z.object({ id: z.string() }),
+  params: z.object({ lectureId: z.string() }),
   body: z.object({ pin: z.string().length(6) }),
 });
 

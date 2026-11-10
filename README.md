@@ -105,6 +105,23 @@ attendance-system/
 - `/api/audit` - Audit logs (Doctor/Super Admin)
 - `/api/fraud` - Fraud detection alerts (Doctor/Super Admin)
 
+## Notifications
+
+Delivered in-app (bell icon in the topbar with a live unread count, plus the Notifications page):
+
+| Type | Trigger |
+|------|---------|
+| `ATTENDANCE_CONFIRMED` | Student successfully checks in |
+| `ABSENCE_REGISTERED` | Lecturer closes a lecture and marks a student absent |
+| `LATE_ARRIVAL` | Student checks in after the late threshold |
+| `ABSENCE_THRESHOLD_WARNING` | Student crosses the allowed absence limit |
+| `JUSTIFICATION_APPROVED` / `JUSTIFICATION_REJECTED` | Lecturer reviews an excuse |
+| `ANNOUNCEMENT` | Lecturer/Dept Admin broadcasts to their audience |
+
+## Exports
+
+Reports export **real CSV** generated server-side from attendance records (respecting role scoping). Excel (`.xlsx`) and PDF are **not** implemented.
+
 ## Design System
 
 ### Color Palette
@@ -141,7 +158,7 @@ attendance-system/
 ```bash
 # Clone repository
 git clone https://github.com/alizebari320/university-attendance-system.git
-cd attendance-attendance-system
+cd university-attendance-system
 
 # Start PostgreSQL
 podman run -d --name attendance-postgres \
@@ -160,6 +177,14 @@ npm run db:setup
 npm run dev
 ```
 
+### Local URLs
+
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:5173 |
+| Backend API | http://localhost:5000/api |
+| Health check | http://localhost:5000/health |
+
 ### Environment Variables
 
 ```bash
@@ -176,20 +201,27 @@ VITE_API_URL=http://localhost:5000/api
 
 ## Development Phases
 
-| Phase | Status |
-|-------|--------|
-| 1. Architecture & DB Schema | ✅ Complete |
-| 2. Design System | ✅ Complete |
-| 3. Auth & RBAC | ✅ Complete |
-| 4. College/Dept/Course CRUD | ✅ Complete |
-| 5. Lecture Scheduling | In Progress |
-| 6. Student Attendance | In Progress |
-| 7. Lecturer Confirmation | Pending |
-| 8. Reporting | Pending |
-| 9. Justifications & Notifications | Pending |
-| 10. Fraud Detection | Pending |
-| 11. Exports | Pending |
-| 12. Testing & Deployment | Pending |
+| Phase | Status | Notes |
+|-------|--------|-------|
+| 1. Architecture & DB Schema | ✅ Complete | 16 tables, Prisma migrations applied |
+| 2. Design System | ✅ Complete | Dark charcoal + navy, blue/orange accents |
+| 3. Auth & RBAC | ✅ Complete | JWT access+refresh httpOnly cookies, 5 roles |
+| 4. College/Dept/Course CRUD | ✅ Complete | Full create/edit/delete, server-side scoping |
+| 5. Lecture Scheduling | ✅ Complete | Slots + instances, open/close/cancel, PIN |
+| 6. Student Attendance | ✅ Complete | PIN check-in, duplicate + expiry enforcement |
+| 7. Lecturer Confirmation | ✅ Complete | Attendance sheet, status changes, owned-lecture checks |
+| 8. Reporting | ✅ Complete | Daily/Weekly/Monthly/Semester + charts |
+| 9. Justifications & Notifications | ✅ Complete | Submit/review flow, 6 notification types, in-app bell |
+| 10. Fraud Detection | ✅ Complete | Duplicate attendance, brute-force PIN, severity levels |
+| 11. Exports | ✅ Complete (CSV) | Real CSV from attendance records. Excel/PDF not implemented |
+| 12. Testing & Deployment | ✅ Partial | TypeScript builds clean, Playwright smoke tests pass across all roles. No CI pipeline / production deploy |
+
+### Verification Performed
+
+- `tsc --noEmit` clean on backend and frontend
+- `npm run build` succeeds on frontend
+- Playwright smoke tests: all 4 roles, every page, desktop + mobile, zero console/page errors
+- Backend enforced (verified via API): student cannot read another student's attendance, cannot access `/audit` or `/colleges`, duplicate check-in rejected, invalid/expired PIN rejected, lecturer cannot operate another lecturer's lecture, justification approval emits notifications, audit + fraud logs written
 
 ## Demo Credentials
 

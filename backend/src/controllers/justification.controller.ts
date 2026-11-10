@@ -56,7 +56,7 @@ export const submitJustification = async (
     await prisma.notification.create({
       data: {
         userId: studentUserId,
-        type: 'ATTENDANCE_CONFIRMATION',
+        type: 'ABSENCE_REGISTRATION',
         title: 'Justification Submitted',
         message: `Your absence justification for lecture ${attendanceId} has been submitted and is pending review.`,
         relatedEntityType: 'AbsenceJustification',
@@ -71,12 +71,32 @@ export const submitJustification = async (
 export const listJustifications = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { status, studentId } = req.query as any;
+    const actorId = (req as any).user.id;
+    const actorRole = (req as any).user.role;
     const where: any = {};
     if (status) where.status = status;
     if (studentId) where.studentId = studentId;
+
+    if (actorRole === 'STUDENT') {
+      const profile = await prisma.studentProfile.findUnique({ where: { userId: actorId } });
+      where.studentId = profile ? profile.id : '__none__';
+    } else if (actorRole === 'LECTURER') {
+      const lecturer = await prisma.lecturerProfile.findUnique({ where: { userId: actorId } });
+      where.student = { departmentId: lecturer ? lecturer.departmentId : '__none__' };
+    } else if (actorRole === 'DEPARTMENT_ADMIN') {
+      const admin = await prisma.departmentAdminProfile.findUnique({ where: { userId: actorId } });
+      where.student = { departmentId: admin ? admin.departmentId : '__none__' };
+    }
+
     const justifications = await prisma.absenceJustification.findMany({
       where,
-      include: { student: { include: { user: true, department: true } }, reviewer: true },
+      include: {
+        student: { include: { user: true, department: true } },
+        reviewer: true,
+        attendance: {
+          include: { lectureInstance: { include: { slot: { include: { course: true } } } } },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
     res.json({ success: true, data: justifications });

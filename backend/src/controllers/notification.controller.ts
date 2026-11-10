@@ -51,17 +51,73 @@ export const createAnnouncement = async (req: Request, res: Response, next: Next
   try {
     const { title, message, userIds } = req.body;
     const actorId = (req as any).user.id;
+    const actorRole = (req as any).user.role;
 
-    const notifications = userIds.map((userId: string) => ({
-      userId,
-      type: 'LECTURER_ANNOUNCEMENT',
-      title,
-      message,
-      authorId: actorId,
-      relatedEntityType: 'Announcement',
-    }));
+    if (!title || !message) {
+      res.status(400).json({ success: false, error: 'Title and message are required' });
+      return;
+    }
 
-    await prisma.notification.createMany({ data: notifications });
-    res.status(201).json({ success: true, message: 'Announcement sent' });
+    let recipientIds: string[] = Array.isArray(userIds) ? userIds : [];
+
+    if (recipientIds.length === 0) {
+      const where: any = { status: 'ACTIVE' };
+      if (actorRole === 'LECTURER') {
+        const lecturer = await prisma.lecturerProfile.findUnique({ where: { userId: actorId } });
+        where.departmentId = lecturer ? lecturer.departmentId : '__none__';
+      }
+      const students = await prisma.studentProfile.findMany({ where, select: { userId: true } });
+      recipientIds = students.map(s => s.userId);
+    }
+
+    if (recipientIds.length === 0) {
+      res.status(400).json({ success: false, error: 'No recipients found' });
+      return;
+    }
+
+    await prisma.notification.createMany({
+      data: recipientIds.map((userId) => ({
+        userId,
+        type: 'LECTURER_ANNOUNCEMENT' as const,
+        title,
+        message,
+        authorId: actorId,
+        relatedEntityType: 'Announcement',
+      })),
+    });
+
+    res.status(201).json({ success: true, data: { sent: recipientIds.length } });
+  } catch (error) { next(error); }
+};
+
+export const listRecipients = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const actorId = (req as any).user.id;
+    const actorRole = (req as any).user.role;
+    const where: any = { status: 'ACTIVE' };
+
+    if (actorRole === 'LECTURER') {
+      const lecturer = await prisma.lecturerProfile.findUnique({ where: { userId: actorId } });
+      where.departmentId = lecturer ? lecturer.departmentId : '__none__';
+    } else if (actorRole === 'DEPARTMENT_ADMIN') {
+      const admin = await prisma.departmentAdminProfile.findUnique({ where: { userId: actorId } });
+      where.departmentId = admin ? admin.departmentId : '__none__';
+    }
+
+    const students = await prisma.studentProfile.findMany({
+      where,
+      include: { user: { select: { id: true, email: true } }, department: true },
+      orderBy: { studentNumber: 'asc' },
+    });
+
+    res.json({
+      success: true,
+      data: students.map(s => ({
+        userId: s.userId,
+        email: s.user.email,
+        studentNumber: s.studentNumber,
+        department: s.department.name,
+      })),
+    });
   } catch (error) { next(error); }
 };

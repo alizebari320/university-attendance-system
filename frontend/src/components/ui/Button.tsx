@@ -1,19 +1,20 @@
-import { ButtonHTMLProps } from 'react';
-import { cn } from '../lib/utils';
+import { ButtonHTMLAttributes, ReactNode } from 'react';
+import { cn } from '../../lib/utils';
 
-interface ButtonProps extends ButtonHTMLProps<HTMLButtonElement> {
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
+  children?: ReactNode;
 }
 
-export function Button({ 
-  variant = 'primary', 
-  size = 'md', 
-  loading, 
-  className, 
-  children, 
-  ...props 
+export function Button({
+  variant = 'primary',
+  size = 'md',
+  loading,
+  className,
+  children,
+  ...props
 }: ButtonProps) {
   const variants = {
     primary: 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg shadow-blue-500/25',

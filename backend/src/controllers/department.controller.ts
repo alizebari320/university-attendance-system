@@ -14,8 +14,17 @@ const departmentSchema = z.object({
 export const listDepartments = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { collegeId } = req.query;
+    const actorId = (req as any).user.id;
+    const actorRole = (req as any).user.role;
+    const where: any = collegeId ? { collegeId: String(collegeId) } : {};
+
+    if (actorRole === 'DEPARTMENT_ADMIN') {
+      const admin = await prisma.departmentAdminProfile.findUnique({ where: { userId: actorId } });
+      where.id = admin ? admin.departmentId : '__none__';
+    }
+
     const departments = await prisma.department.findMany({
-      where: collegeId ? { collegeId: String(collegeId) } : {},
+      where,
       include: { college: true, courses: true },
       orderBy: { createdAt: 'desc' },
     });

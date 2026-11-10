@@ -1,5 +1,5 @@
-import { ReactNode } from 'react';
-import { cn } from '../lib/utils';
+import { ReactNode, TdHTMLAttributes } from 'react';
+import { cn } from '../../lib/utils';
 
 interface TableProps {
   children: ReactNode;
@@ -34,7 +34,7 @@ export function TableBody({ children }: { children: ReactNode }) {
 
 export function TableRow({ children, className, onClick }: { children: ReactNode; className?: string; onClick?: () => void }) {
   return (
-    <tr 
+    <tr
       className={cn(
         'hover:bg-charcoal-800/50 transition-colors',
         onClick && 'cursor-pointer',
@@ -55,9 +55,9 @@ export function TableHead({ children, className }: { children: ReactNode; classN
   );
 }
 
-export function TableCell({ children, className }: { children: ReactNode; className?: string }) {
+export function TableCell({ children, className, ...props }: { children: ReactNode; className?: string } & TdHTMLAttributes<HTMLTableCellElement>) {
   return (
-    <td className={cn('text-charcoal-300 py-3 px-4', className)}>
+    <td className={cn('text-charcoal-300 py-3 px-4', className)} {...props}>
       {children}
     </td>
   );
@@ -83,7 +83,7 @@ export function StatusBadge({ status, className }: { status: string; className?:
     HIGH: 'bg-orange-500/15 text-orange-400',
     CRITICAL: 'bg-red-500/15 text-red-400',
   };
-  
+
   return (
     <span className={cn(
       'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',

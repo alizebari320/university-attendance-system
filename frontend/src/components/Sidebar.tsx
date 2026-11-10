@@ -42,6 +42,7 @@ export function Sidebar({ items, collapsed = false, onCollapse, className }: Sid
         <button
           onClick={() => onCollapse?.(!collapsed)}
           className="text-charcoal-400 hover:text-white p-1 rounded"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? '▶' : '◀'}
         </button>
