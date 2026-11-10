@@ -1,0 +1,428 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String     @id @default(cuid())
+  email               String     @unique
+  passwordHash        String
+  role                Role
+  status              UserStatus @default(ACTIVE)
+  refreshToken        String?
+  failedLoginAttempts Int        @default(0)
+  lockedUntil         DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  studentProfile         StudentProfile?
+  lecturerProfile        LecturerProfile?
+  departmentAdminProfile DepartmentAdminProfile?
+  doctorProfile          DoctorProfile?
+  notifications          Notification[]
+  auditLogs              AuditLog[]              @relation("ActorAuditLogs")
+  authoredNotifications  Notification[]          @relation("AuthorNotifications")
+  attendedRecords        AttendanceRecord[]      @relation("StudentUserAttended")
+  reviewedJustifications AbsenceJustification[]  @relation("ReviewerJustifications")
+  resolvedFrauds         FraudDetectionLog[]     @relation("ResolverFraud")
+  fraudLogs              FraudDetectionLog[]
+
+  @@index([role, status])
+  @@index([email])
+}
+
+model College {
+  id        String        @id @default(cuid())
+  name      String
+  code      String        @unique @map("college_code_key")
+  status    CollegeStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  departments      Department[]
+  lecturers        LecturerProfile[]        @relation("CollegeLecturers")
+  students         StudentProfile[]         @relation("CollegeStudents")
+  departmentAdmins DepartmentAdminProfile[] @relation("CollegeDeptAdmins")
+
+  @@index([code])
+}
+
+model Department {
+  id        String           @id @default(cuid())
+  name      String
+  code      String           @unique @map("dept_code_key")
+  status    DepartmentStatus @default(ACTIVE)
+  collegeId String
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  college   College                  @relation(fields: [collegeId], references: [id])
+  courses   Course[]
+  lecturers LecturerProfile[]        @relation("DepartmentLecturers")
+  students  StudentProfile[]         @relation("DepartmentStudents")
+  admins    DepartmentAdminProfile[] @relation("DeptAdmins")
+
+  @@index([collegeId])
+  @@index([code])
+}
+
+model Course {
+  id           String       @id @default(cuid())
+  name         String
+  code         String       @unique @map("course_code_key")
+  credits      Int          @default(3)
+  status       CourseStatus @default(ACTIVE)
+  departmentId String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  department   Department    @relation(fields: [departmentId], references: [id])
+  lectureSlots LectureSlot[]
+
+  @@index([departmentId])
+  @@index([code])
+}
+
+model LecturerProfile {
+  id           String     @id @default(cuid())
+  userId       String     @unique
+  employeeId   String     @unique
+  collegeId    String
+  departmentId String
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  user       User          @relation(fields: [userId], references: [id])
+  college    College       @relation(fields: [collegeId], references: [id], name: "CollegeLecturers")
+  department Department    @relation(fields: [departmentId], references: [id], name: "DepartmentLecturers")
+  lectures   LectureSlot[]
+
+  @@index([collegeId])
+  @@index([departmentId])
+}
+
+model DepartmentAdminProfile {
+  id           String     @id @default(cuid())
+  userId       String     @unique
+  collegeId    String
+  departmentId String
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id])
+  college    College    @relation(fields: [collegeId], references: [id], name: "CollegeDeptAdmins")
+  department Department @relation(fields: [departmentId], references: [id], name: "DeptAdmins")
+
+  @@index([collegeId])
+  @@index([departmentId])
+}
+
+model DoctorProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model StudentProfile {
+  id                      String     @id @default(cuid())
+  userId                  String     @unique
+  studentNumber           String     @unique @map("studentNumber_key")
+  collegeId               String
+  departmentId            String
+  enrollmentYear          Int
+  enrollmentSemester      String
+  status                  UserStatus @default(ACTIVE)
+  absenceCountPerSemester Int        @default(0)
+  absenceThreshold        Int        @default(5)
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
+
+  user           User                   @relation(fields: [userId], references: [id])
+  college        College                @relation(fields: [collegeId], references: [id], name: "CollegeStudents")
+  department     Department             @relation(fields: [departmentId], references: [id], name: "DepartmentStudents")
+  attendances    AttendanceRecord[]     @relation("StudentRecordings")
+  justifications AbsenceJustification[] @relation("StudentJustifications")
+
+  @@index([collegeId])
+  @@index([departmentId])
+  @@index([studentNumber])
+}
+
+model LectureSlot {
+  id         String        @id @default(cuid())
+  name       String
+  courseId   String
+  lecturerId String
+  dayOfWeek  Int           @default(1)
+  startTime  String
+  endTime    String
+  room       String?
+  status     LectureStatus @default(ACTIVE)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  course    Course            @relation(fields: [courseId], references: [id])
+  lecturer  LecturerProfile   @relation(fields: [lecturerId], references: [id])
+  instances LectureInstance[]
+
+  @@index([courseId])
+  @@index([lecturerId])
+}
+
+model LectureInstance {
+  id                 String                @id @default(cuid())
+  slotId             String
+  scheduledDate      DateTime
+  actualStart        DateTime?
+  actualEnd          DateTime?
+  status             LectureInstanceStatus @default(SCHEDULED)
+  closedAt           DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?
+  pinHash            String?
+  pinExpiresAt       DateTime?
+  maxPinAttempts     Int                   @default(3)
+  pinAttempts        Int                   @default(0)
+  createdAt          DateTime              @default(now())
+
+  slot        LectureSlot        @relation(fields: [slotId], references: [id])
+  attendances AttendanceRecord[] @relation("InstanceRecordings")
+
+  @@unique([slotId, scheduledDate])
+  @@index([slotId])
+  @@index([scheduledDate])
+}
+
+model AttendanceRecord {
+  id                String           @id @default(cuid())
+  lectureInstanceId String
+  studentId         String
+  studentUserId     String
+  status            AttendanceStatus
+  checkInTime       DateTime?
+  checkInMethod     CheckInMethod    @default(PIN)
+  pinUsed           String?
+  ipAddress         String?
+  userAgent         String?
+  createdAt         DateTime         @default(now())
+
+  lectureInstance LectureInstance       @relation(fields: [lectureInstanceId], references: [id], name: "InstanceRecordings")
+  student         StudentProfile        @relation(fields: [studentId], references: [id], name: "StudentRecordings")
+  studentUser     User                  @relation("StudentUserAttended", fields: [studentUserId], references: [id])
+  justification   AbsenceJustification? @relation("AttendanceJustification")
+
+  @@unique([lectureInstanceId, studentUserId])
+  @@index([lectureInstanceId])
+  @@index([studentId])
+  @@index([studentUserId])
+}
+
+model AbsenceJustification {
+  id                String              @id @default(cuid())
+  attendanceId      String              @unique
+  studentId         String
+  reason            JustificationReason
+  justificationText String
+  evidenceUrls      String[]            @default([])
+  status            JustificationStatus @default(PENDING)
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  reviewNotes       String?
+  createdAt         DateTime            @default(now())
+
+  attendance AttendanceRecord @relation(fields: [attendanceId], references: [id], name: "AttendanceJustification")
+  student    StudentProfile   @relation(fields: [studentId], references: [id], name: "StudentJustifications")
+  reviewer   User?            @relation("ReviewerJustifications", fields: [reviewedBy], references: [id])
+
+  @@index([status])
+  @@index([studentId])
+}
+
+model Notification {
+  id                String           @id @default(cuid())
+  userId            String
+  type              NotificationType
+  title             String
+  message           String
+  relatedEntityType String?
+  relatedEntityId   String?
+  readAt            DateTime?
+  createdAt         DateTime         @default(now())
+
+  user     User    @relation(fields: [userId], references: [id])
+  author   User?   @relation("AuthorNotifications", fields: [authorId], references: [id])
+  authorId String?
+
+  @@index([userId])
+  @@index([type])
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  entityType String
+  entityId   String
+  action     AuditAction
+  actorId    String?
+  actorRole  Role?
+  oldValues  Json?
+  newValues  Json?
+  reason     String?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime    @default(now())
+
+  actor User? @relation("ActorAuditLogs", fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model FraudDetectionLog {
+  id                String             @id @default(cuid())
+  userId            String
+  lectureInstanceId String?
+  lectureId         String?
+  detectionType     FraudDetectionType
+  severity          FraudSeverity      @default(MEDIUM)
+  details           Json
+  ipAddress         String?
+  resolved          Boolean            @default(false)
+  resolvedBy        String?
+  resolvedAt        DateTime?
+  createdAt         DateTime           @default(now())
+
+  user     User  @relation(fields: [userId], references: [id])
+  resolver User? @relation("ResolverFraud", fields: [resolvedBy], references: [id])
+
+  @@index([userId])
+  @@index([detectionType])
+  @@index([severity])
+  @@index([resolved])
+}
+
+// Enums
+enum Role {
+  SUPER_ADMIN
+  DOCTOR
+  DEPARTMENT_ADMIN
+  LECTURER
+  STUDENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum CollegeStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum DepartmentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum CourseStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum LectureStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum LectureInstanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  CLOSED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+}
+
+enum CheckInMethod {
+  PIN
+  QR_CODE
+  NFC
+  MANUAL
+}
+
+enum JustificationReason {
+  MEDICAL
+  FAMILY_EMERGENCY
+  TRAVEL
+  OTHER
+}
+
+enum JustificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NotificationType {
+  ATTENDANCE_CONFIRMATION
+  ABSENCE_REGISTRATION
+  LATE_ARRIVAL
+  ABSENCE_THRESHOLD_WARNING
+  APPROVED_JUSTIFICATION
+  REJECTED_JUSTIFICATION
+  LECTURER_ANNOUNCEMENT
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  ATTENDANCE_SUBMIT
+  ATTENDANCE_MODIFY
+  PIN_GENERATE
+  PIN_VERIFY
+  PIN_EXPIRE
+  LECTURE_OPEN
+  LECTURE_CLOSE
+  LECTURE_CANCEL
+  JUSTIFICATION_APPROVE
+  JUSTIFICATION_REJECT
+  USER_ROLE_CHANGE
+  USER_STATUS_CHANGE
+}
+
+enum FraudDetectionType {
+  DUPLICATE_ATTENDANCE
+  FOREIGN_STUDENT_ATTENDANCE
+  EXPIRED_PIN_USED
+  BRUTE_FORCE_PIN
+  LATE_CHECKIN
+  CANCELLED_LECTURE_ATTENDANCE
+  SUSPICIOUS_IP
+  INVALID_CHECKIN
+}
+
+enum FraudSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
