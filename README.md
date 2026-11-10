@@ -1,243 +1,219 @@
 # University Attendance Management System
 
-A multi-tenant SaaS platform for university attendance management with RBAC, fraud detection, audit trails, and premium analytics.
+A full-stack, multi-tenant web application that lets a university record and audit student attendance across colleges, departments and courses — with role-based access control, PIN-verified check-in, absence justifications, in-app notifications, fraud detection and a full audit trail.
 
-## Architecture Overview
+The problem it solves: paper sheets and spreadsheets make attendance easy to fake, hard to audit and impossible to report on. This system moves the whole flow online, records who did what and when, and refuses — on the server, not in the browser — any action a user is not entitled to perform.
 
-### Technology Stack
+---
 
-**Frontend:**
-- React 19 + TypeScript
-- Tailwind CSS (dark theme)
-- Recharts for analytics
-- React Router
+## How it works
 
-**Backend:**
-- Node.js + Express
-- TypeScript
-- Zod validation
-- JWT Authentication
+### 1. Roles
 
-**Database:**
-- PostgreSQL 16
-- Prisma ORM
+Five roles, each with a different scope. Scope is enforced in the API layer, so hiding a button in the UI is never the only protection.
 
-**Testing:**
-- Vitest (unit tests)
-- Playwright (E2E tests)
+| Role | What they can do |
+|------|------------------|
+| **Super Admin** | Everything, across every college. Full audit and fraud access. |
+| **Doctor** | University-wide oversight: analytics, all students, fraud alerts, audit logs. Can switch between colleges. |
+| **Department Admin** | Manages only their own department: courses, lecturers, students, lectures. |
+| **Lecturer** | Manages only the lectures they own: opens attendance, marks students, reviews justifications, posts announcements. |
+| **Student** | Sees only their own attendance history, checks into lectures with a PIN, submits absence justifications. |
 
-## Project Structure
+### 2. Structure: College → Department → Course → Lecture
+
+- A **College** contains **Departments**.
+- A **Department** contains **Courses**, **Lecturers** and **Students**.
+- A **Course** has **Lecture Slots** — the recurring weekly timetable (day of week, start and end time).
+- A **Lecture Slot** generates **Lecture Instances** — one real, dated occurrence of that class.
+
+Separating the recurring timetable from the dated occurrence is what makes reports, absences and per-session PINs possible.
+
+### 3. Attendance flow
+
+1. A lecturer **schedules** a lecture instance from a slot.
+2. When class starts, the lecturer **opens** the lecture. The server generates a 6-digit PIN, valid for a limited window.
+3. The lecturer shares the PIN verbally in the room.
+4. Each student logs in and **checks in** with the PIN.
+5. The server stamps the record as `PRESENT` or `LATE`, depending on how far into the lecture the check-in happened.
+6. When the lecturer **closes** the lecture, every enrolled student without a record is written as `ABSENT`, and notifications are dispatched.
+
+### 4. What the server refuses
+
+These are real backend guards, not UI hints:
+
+- A student can only ever write attendance for **their own** user id — the id is taken from the session, never from the request body.
+- A student cannot read another student's attendance.
+- A student is blocked from admin-only endpoints such as audit logs and college management.
+- The same student cannot check in twice to the same lecture — a unique constraint on `(lecture, student)` makes a duplicate physically impossible.
+- An expired or wrong PIN is rejected, and repeated wrong attempts are logged as brute-force attempts.
+- A lecturer cannot open, close or edit a lecture they do not own.
+- A department admin cannot touch records outside their department.
+- Attendance records cannot be silently rewritten afterwards; changes are audited.
+
+### 5. Absence justifications
+
+When a student is marked absent, they can attach a written justification to that specific record. The lecturer who owns the lecture reviews it and approves or rejects it. Either outcome fires a notification back to the student, and the decision is written to the audit log.
+
+### 6. Notifications
+
+Delivered in-app: a bell in the top bar with a live unread count, plus a full notifications page with mark-as-read.
+
+| Event | Notification |
+|-------|--------------|
+| Successful check-in | Attendance confirmed |
+| Marked absent when the lecture closes | Absence registered |
+| Checked in after the late threshold | Late arrival |
+| Absences cross the allowed limit | Absence-threshold warning |
+| Justification reviewed | Approved or rejected |
+| Lecturer broadcast | Announcement |
+
+### 7. Reporting, fraud and audit
+
+- **Reports** aggregate attendance by day, week, month or semester, rendered as charts and tables.
+- **Fraud detection** records suspicious events — duplicate attendance, brute-force PIN attempts — with a severity level, and surfaces them to the Doctor and Super Admin.
+- **Audit logs** record the actor, entity, action and timestamp of meaningful changes, so any record can be traced back to the person who changed it.
+
+### 8. Exports
+
+Reports export real CSV generated on the server from the actual attendance records, respecting the caller's role scope. Excel and PDF export are not implemented.
+
+---
+
+## Tech stack
+
+**Frontend** — React with TypeScript, Tailwind CSS, React Router, Recharts for analytics.
+**Backend** — Node.js, Express, TypeScript, Zod for request validation, JWT authentication with access and refresh tokens in httpOnly cookies.
+**Database** — PostgreSQL with Prisma ORM and versioned migrations.
+**Testing** — TypeScript compilation checks, plus Playwright end-to-end smoke tests that walk every page for every role on desktop and mobile.
+
+---
+
+## Data model
+
+| Entity | Purpose |
+|--------|---------|
+| `User` | Every account: email, password hash, role |
+| `College` | Top-level academic unit |
+| `Department` | Belongs to a college |
+| `Course` | Belongs to a department, carries credits |
+| `LecturerProfile` | Lecturer details: employee id, department |
+| `StudentProfile` | Student details: student number, department |
+| `LectureSlot` | Recurring weekly schedule entry for a course |
+| `LectureInstance` | A dated occurrence of a slot, with status and PIN |
+| `AttendanceRecord` | One student's attendance for one lecture |
+| `AbsenceJustification` | Student's written excuse for an absence, with review status |
+| `Notification` | Per-user in-app message |
+| `AuditLog` | Who changed what, when |
+| `FraudDetectionLog` | Security event with detection type and severity |
+
+---
+
+## Project structure
 
 ```
 attendance-system/
-├── backend/                  # Express API
-│   ├── src/
-│   │   ├── controllers/       # Business logic
-│   │   ├── middleware/        # Auth, validation, error handling
-│   │   ├── routes/            # API endpoints
-│   │   ├── prisma/            # Seed script
-│   │   └── types/             # TypeScript types
-│   ├── prisma/                # Database schema
-│   └── dist/                  # Compiled output
+├── backend/                 # Express API
+│   ├── prisma/              # Schema and migrations
+│   └── src/
+│       ├── controllers/     # Business logic and scoping rules
+│       ├── middleware/      # Authentication, validation, error handling
+│       ├── routes/          # Endpoint definitions
+│       ├── prisma/          # Seed script
+│       └── types/           # Shared TypeScript types
 │
-├── frontend/                  # React SPA
-│   ├── src/
-│   │   ├── components/        # UI components
-│   │   ├── contexts/          # React context
-│   │   ├── data/              # Nav items
-│   │   ├── lib/               # API client, utils
-│   │   ├── pages/             # Page components
-│   │   ├── App.tsx            # Routing
-│   │   └── main.tsx           # Entry point
-│   ├── tailwind.config.js     # Design system
-│   └── index.html
+├── frontend/                # React single-page app
+│   └── src/
+│       ├── components/      # Layout, navigation, shared UI
+│       ├── contexts/        # Auth context
+│       ├── data/            # Navigation definitions per role
+│       ├── lib/             # API client and helpers
+│       ├── pages/           # One page per feature
+│       ├── App.tsx          # Routing and role-based dashboards
+│       └── main.tsx         # Entry point
 │
-└── package.json               # Root scripts
+└── package.json             # Root scripts
 ```
 
-## Database Schema
+---
 
-### Key Entities
+## API surface
 
-| Entity | Description | Key Fields |
-|--------|-------------|------------|
-| **User** | All system users | email, passwordHash, role |
-| **College** | University colleges | name, code, status |
-| **Department** | Academic departments | name, code, collegeId |
-| **Course** | Courses | name, code, credits, departmentId |
-| **LecturerProfile** | Lecturer details | userId, employeeId, departmentId |
-| **StudentProfile** | Student details | userId, studentNumber, departmentId |
-| **LectureSlot** | Weekly lecture schedule | courseId, dayOfWeek, startTime, endTime |
-| **LectureInstance** | Specific lecture date | slotId, scheduledDate, status, PIN |
-| **AttendanceRecord** | Student attendance | lectureId, studentId, status |
-| **AbsenceJustification** | Justification for absence | attendanceId, reason, status |
-| **Notification** | User notifications | userId, type, title, message |
-| **AuditLog** | System audit trail | entityType, entityId, action, actorId |
-| **FraudDetectionLog** | Security events | userId, detectionType, severity |
+| Group | Endpoints |
+|-------|-----------|
+| Auth | login, logout, refresh, current user |
+| Academic structure | colleges, departments, courses |
+| People | students, lecturers |
+| Scheduling | lecture slots, lecture instances, open, close, cancel |
+| Attendance | student check-in, lecturer sheet, status changes, history |
+| Justifications | submit, list, approve, reject |
+| Reports | daily, weekly, monthly, semester, CSV export |
+| Notifications | list, mark read, recipients, announcements |
+| Oversight | audit logs, fraud alerts |
 
-### Security Constraints
+---
 
-1. **Attendance Ownership**: `UNIQUE(lecture_id, student_user_id)` prevents duplicates
-2. **Student Self-Submission**: Backend enforces `student_user_id = current_user.id`
-3. **No Modification**: Attendance records are immutable after creation
-4. **Role-Based Access**: Lecturers only access assigned courses
-5. **PIN Security**: 6-digit PIN, 30-minute expiry, brute-force protection
+## Running it
 
-## API Endpoints
-
-### Authentication
-- `POST /api/auth/login` - Login
-- `POST /api/auth/logout` - Logout
-- `POST /api/auth/refresh` - Token refresh
-- `GET /api/auth/me` - Current user
-
-### Core Modules
-- `/api/colleges` - College management (Doctor/Super Admin)
-- `/api/departments` - Department management (Doctor/Dept Admin)
-- `/api/courses` - Course management
-- `/api/students` - Student profiles
-- `/api/lecturers` - Lecturer profiles
-- `/api/lectures` - Lecture scheduling and management
-- `/api/attendance` - Attendance check-in/submission
-- `/api/justifications` - Absence justifications
-- `/api/reports` - Daily/Weekly/Monthly/Semester reports
-- `/api/notifications` - User notifications
-- `/api/audit` - Audit logs (Doctor/Super Admin)
-- `/api/fraud` - Fraud detection alerts (Doctor/Super Admin)
-
-## Notifications
-
-Delivered in-app (bell icon in the topbar with a live unread count, plus the Notifications page):
-
-| Type | Trigger |
-|------|---------|
-| `ATTENDANCE_CONFIRMED` | Student successfully checks in |
-| `ABSENCE_REGISTERED` | Lecturer closes a lecture and marks a student absent |
-| `LATE_ARRIVAL` | Student checks in after the late threshold |
-| `ABSENCE_THRESHOLD_WARNING` | Student crosses the allowed absence limit |
-| `JUSTIFICATION_APPROVED` / `JUSTIFICATION_REJECTED` | Lecturer reviews an excuse |
-| `ANNOUNCEMENT` | Lecturer/Dept Admin broadcasts to their audience |
-
-## Exports
-
-Reports export **real CSV** generated server-side from attendance records (respecting role scoping). Excel (`.xlsx`) and PDF are **not** implemented.
-
-## Design System
-
-### Color Palette
-- **Background**: `#0a0a0a` (charcoal)
-- **Surfaces**: `#171717` → `#262626` (gradient)
-- **Primary**: Blue (`#3b82f6`, `#5c89ff`)
-- **Accent**: Orange (`#f97316`, `#ea580c`)
-
-### Components
-- Cards with subtle borders
-- Interactive tables with status badges
-- Animated stat cards
-- Responsive sidebar navigation
-
-## Roles and Permissions
-
-| Role | Access Level |
-|------|-------------|
-| **Super Admin** | All colleges/departments, full audit access |
-| **Doctor** | Switch colleges, view all students, fraud alerts |
-| **Department Admin** | Own department management |
-| **Lecturer** | Own courses, attendance check-in, justifications |
-| **Student** | Own attendance only |
-
-## Getting Started
-
-### Prerequisites
-- Node.js 22+
-- PostgreSQL 16
-- Docker/Podman (for database)
-
-### Setup
+Prerequisites: Node.js 22+, PostgreSQL 16 (local install or a container), npm.
 
 ```bash
-# Clone repository
 git clone https://github.com/alizebari320/university-attendance-system.git
 cd university-attendance-system
 
-# Start PostgreSQL
-podman run -d --name attendance-postgres \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_DB=attendance_system \
-  -p 5432:5432 postgres:16-alpine
-
-# Install dependencies
 npm install
-
-# Run database setup
-npm run db:setup
-
-# Start development
-npm run dev
 ```
 
-### Local URLs
-
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:5173 |
-| Backend API | http://localhost:5000/api |
-| Health check | http://localhost:5000/health |
-
-### Environment Variables
+Create the backend and frontend environment files:
 
 ```bash
-# Backend (.env)
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/attendance_system
-JWT_SECRET=your-super-secret-key
+# backend/.env
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE
+JWT_SECRET=<a long random string>
 JWT_EXPIRES_IN=15m
 REFRESH_TOKEN_EXPIRES_IN=7d
 PORT=5000
 
-# Frontend (.env)
-VITE_API_URL=http://localhost:5000/api
+# frontend/.env
+VITE_API_URL=<protocol>://<host>:<port>/api
 ```
 
-## Development Phases
+Then apply the schema, seed an initial dataset and start both apps:
 
-| Phase | Status | Notes |
-|-------|--------|-------|
-| 1. Architecture & DB Schema | ✅ Complete | 16 tables, Prisma migrations applied |
-| 2. Design System | ✅ Complete | Dark charcoal + navy, blue/orange accents |
-| 3. Auth & RBAC | ✅ Complete | JWT access+refresh httpOnly cookies, 5 roles |
-| 4. College/Dept/Course CRUD | ✅ Complete | Full create/edit/delete, server-side scoping |
-| 5. Lecture Scheduling | ✅ Complete | Slots + instances, open/close/cancel, PIN |
-| 6. Student Attendance | ✅ Complete | PIN check-in, duplicate + expiry enforcement |
-| 7. Lecturer Confirmation | ✅ Complete | Attendance sheet, status changes, owned-lecture checks |
-| 8. Reporting | ✅ Complete | Daily/Weekly/Monthly/Semester + charts |
-| 9. Justifications & Notifications | ✅ Complete | Submit/review flow, 6 notification types, in-app bell |
-| 10. Fraud Detection | ✅ Complete | Duplicate attendance, brute-force PIN, severity levels |
-| 11. Exports | ✅ Complete (CSV) | Real CSV from attendance records. Excel/PDF not implemented |
-| 12. Testing & Deployment | ✅ Partial | TypeScript builds clean, Playwright smoke tests pass across all roles. No CI pipeline / production deploy |
-
-### Verification Performed
-
-- `tsc --noEmit` clean on backend and frontend
-- `npm run build` succeeds on frontend
-- Playwright smoke tests: all 4 roles, every page, desktop + mobile, zero console/page errors
-- Backend enforced (verified via API): student cannot read another student's attendance, cannot access `/audit` or `/colleges`, duplicate check-in rejected, invalid/expired PIN rejected, lecturer cannot operate another lecturer's lecture, justification approval emits notifications, audit + fraud logs written
-
-## Demo Credentials
-
+```bash
+npm run db:setup   # runs migrations and the seed script
+npm run dev        # starts the API and the frontend together
 ```
-Email: student@university.edu
-Password: Student123!
 
-Email: lecturer@university.edu
-Password: Lecturer123!
+The seed script creates one demo account per role. Open `backend/src/prisma/seed.ts` to see which addresses and passwords it generates, then change them before using this anywhere real.
 
-Email: doctor@university.edu
-Password: Doctor123!
+---
 
-Email: superadmin@university.edu
-Password: SuperAdmin123!
-```
+## Implementation status
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Architecture and database schema | Done | 16 tables, versioned Prisma migrations |
+| Design system | Done | Dark charcoal and navy surfaces, blue and orange accents, responsive layout |
+| Authentication and RBAC | Done | JWT access and refresh tokens in httpOnly cookies, five roles |
+| College, department, course CRUD | Done | Full create, edit, delete, with server-side scoping |
+| Lecture scheduling | Done | Slots and dated instances, open, close, cancel, PIN generation |
+| Student attendance | Done | PIN check-in with duplicate and expiry enforcement |
+| Lecturer confirmation | Done | Attendance sheet, status changes, ownership checks |
+| Reporting | Done | Daily, weekly, monthly, semester, with charts |
+| Justifications and notifications | Done | Submit and review flow, six notification types |
+| Fraud detection | Done | Duplicate attendance and brute-force PIN detection with severity levels |
+| Exports | CSV only | Excel and PDF are not implemented |
+| Testing and deployment | Partial | TypeScript builds clean, Playwright smoke tests pass for every role. No CI pipeline and no production deployment setup |
+
+### What has actually been verified
+
+- TypeScript compilation is clean on both backend and frontend.
+- The frontend production build succeeds.
+- Playwright smoke tests cover all roles, every page, desktop and mobile, with no console or page errors.
+- Security rules were checked against the running API, not just the UI: a student cannot read another student's attendance, cannot reach audit or college endpoints, a duplicate check-in is rejected, a wrong or expired PIN is rejected, a lecturer cannot operate another lecturer's lecture, reviewing a justification emits notifications, and audit and fraud records are written.
+
+---
 
 ## License
 
